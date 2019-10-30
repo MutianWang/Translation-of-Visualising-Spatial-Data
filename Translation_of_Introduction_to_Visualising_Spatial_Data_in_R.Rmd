@@ -1,0 +1,1225 @@
+---
+title: "R语言空间数据可视化简介"
+author: 王慕天 王思远 译
+output: html_document
+---
+
+```{r setup, include=FALSE}
+ # keep this chunk in your .Rmd file
+ knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+```{r, include=FALSE, eval=FALSE}
+# output: word_document
+# TODO: add details for the ggplot2 section
+# TODO: create animation of population change over time
+# Add world mapping in ggplot2
+library(knitr)
+library(methods)
+options(replace.assign=FALSE, width=80)
+
+opts_chunk$set(fig.path='knitr_figure/graphics-', 
+               cache.path='knitr_cache/graphics-', 
+               dev='pdf', fig.width=4, fig.height=3, 
+               fig.show='hold', cache=FALSE, par=TRUE)
+knit_hooks$set(crop=hook_pdfcrop)
+
+knit_hooks$set(par=function(before, options, envir){
+    if (before && options$fig.show!='none') {
+        par(mar=c(3,3,2,1),cex.lab=.95,cex.axis=.9,
+            mgp=c(2,.7,0),tcl=-.01, las=1)
+}}, crop=hook_pdfcrop)
+```
+
+
+## 前言
+
+本教程将介绍基于**sp**类系统的空间数据可视化及分析。若想获取最新关于**sf**包的资料，请参见
+[R语言地理计算](https://github.com/Robinlovelace/geocompr)的
+[第二章](http://robinlovelace.net/geocompr/spatial-class.html)。其源代码收录在
+[github.com/Robinlovelace/geocompr](https://github.com/Robinlovelace/geocompr)之中。
+
+尽管**sf**可在多方面取代**sp**，学习本教程仍将让你受益匪浅，因为不论你使用何种软件，本教程所述的原则都是通用的。具体而言，本教程的核心是地图绘制，主要使用R的基础绘图和其他各种专业的地图绘制包，包括**tmap**和**leaflet**。希望在学习本教程之后，你可以将R变为一个快速、强大且用户友好的地理信息系统。
+
+在学习本教程后，你会掌握对地理或非地理数据库进行分析和可视化的技巧。本教程所提供的数据和代码都是可复制的，所绘制的图片质量极高，可达到出版要求。下图为历年伦敦人口变化图：
+
+![](https://raw.githubusercontent.com/Robinlovelace/Creating-maps-in-R/master/figure/facet_london.png)
+
+本教程甚至会教授如何绘制动态图：
+
+![](https://raw.githubusercontent.com/Robinlovelace/Creating-maps-in-R/master/figure/lnd-animated.gif)
+
+本教程最新的pdf文件可在此下载
+[intro-spatial-rl.pdf](https://github.com/Robinlovelace/Creating-maps-in-R/blob/master/intro-spatial-rl.pdf)，可用于教学目的。
+
+如果你有任何建议，请通过邮箱或Github告诉我们。我们也欢迎对`.Rmd`文件的修改 [README.Rmd](https://github.com/Robinlovelace/Creating-maps-in-R/blob/master/README.Rmd)。
+希望大家享受地图绘制！
+
+本教程实践性极强：你会载入、可视化、编辑空间数据。本教程不要求读者有空间数据分析的基础，但最好可以对R有所了解。如果你从未使用过R，那我们建议你先阅读一些R的介绍教程，例如 [高效R语言编程](https://csgillespie.github.io/efficientR/)， [R语言数据科学](http://r4ds.had.co.nz/)，或者是 [rstudio.com](https://www.rstudio.com/online-learning/)和 [cran.r-project.org](https://cran.r-project.org/other-docs.html)中所推荐的教程。
+
+...
+
+现在你对R已经有所了解，是时候让你的注意力转向R语言的空间数据了。本教程的框架如下：
+
+1. 简介： 对R的语法进行介绍，并为阅读本教程进行前期准备
+2. R语言空间数据：描述R中基础的空间函数
+3. 创建编辑空间数据：包括改变投影，剪裁和空间连接
+4. 使用**tmap**，**ggplot2**和**leaflet**绘制地图：该部分展示如何使用高级工具绘制地图
+5. 使用R语言深入分析空间数据：提供一系列资料，可让你进一步提升技能
+
+为了区分代码和普通文字，R代码（例如`plot(x, y)`）是`等宽字体`，包的名称（例如**rgdal**）则是**粗体**。代码开头的两个井号（`##`）表示这是R的输出。由于空间有限，过长的输出则被省略。所以如果你的R输出了更多的信息，是很正常的。你总可以在代码中找到相关语句。
+
+和其他编程语言一样，通常有多种方法来达到同样的输出效果。本教程中所提供的代码并不是唯一解。我们希望你可以试着改变代码，这样可以对R有着更为深入的理解。不必担心犯错，因为你可以重新载入数据。就像学习滑板一样，你会在`报错`中成长。在R中遇到报错可比摔倒在水泥地上要好多了！这至少意味着你在尝试新的东西。
+
+
+第一章: 简介
+========================================================
+
+## 准备
+
+阅读本文时，需要使用R。最新版本可以在此下载
+[http://cran.r-project.org/](http://cran.r-project.org/)。
+
+同时我们建议你使用一个R编辑器, 例如 [RStudio](http://www.rstudio.com/)。这会提升用户体验，并加快学习进度。它可以在该网站下载http://www.rstudio.com 。 RStudio的界面由多个窗口组成，最重要的则是控制台窗口和脚本窗口。你在控制台窗口所输入的任何代码都不会被保存，所以请使用脚本窗口进行编辑，并在之后保存。此外还有一个数据环境窗口，列举了所有正被使用的数据帧和对象。请在阅读本教程之前先对RStudio有所了解。
+
+不论使用何种编程语言，都应明确遵守相应的代码规范并保持一致，R语言也不例外。在代码中加入注释十分有益，当你下一次阅读代码时，就可以轻松了解代码的含义。你可以在一行代码之前或之后使用`#`符号进行加注，如下方代码所示。如果你在控制台窗口输入同样的代码，就会得到与图1一样的图片。
+
+```{r fig.cap="x和y的基础绘图（右）和所用代码（左）", echo=FALSE, fig.width=6, fig.height=3}
+# # Generate data
+# x <- 1:400
+# y <- sin(x / 10) * exp(x * -0.01)
+# 
+# plot(x, y) # plot the result
+library(png)
+library(grid)
+grid.raster(readPNG("figure/plot1.png"))
+```
+
+该代码块的第一行创造了一个新的**对象**`x`，并赋值为1至400的整数。第二行创造另一个对象`y`,并赋值为一个数学公式。第三行则是对两者进行绘图。
+
+注意到`<-`是用来创建新对象并进行赋值的。^[提示: 在RStudio输入`Alt -`即可打出该符号。它与`=`等价。]
+
+如果你需要任何函数的帮助，请使用`help`命令，例如`help(plot)`。由于R的用户喜欢简洁，你也可以使用`?plot`这一语句。当你想获得某一函数的具体信息时，请使用这一功能。(不过对于初学者来说，R的帮助文件是出了名的晦涩难懂。)对于一般性的术语，可以使用`??`符号，例如输入`??regression`。常言道，实践出真知，让我们开始下载一些包和数据吧。
+
+## R包
+
+R有着数量巨大的空间数据包，且这一数字仍在持续增长。我们建议你快速浏览R的主页，了解一下可用的空间数据包：
+[http://cran.r-project.org/web/views/Spatial.html](http://cran.r-project.org/web/views/Spatial.html)
+
+在本教程中，我们使用的包来自‘**sp**verse’，我们会使用**sp**包：
+
+- **ggmap**：对**ggplot2**的延伸，使用于地图绘制
+- **rgdal**: R对C和C++空间数据处理库的接口 [gdal](http://www.gdal.org/)
+- **rgeos**: R对向量处理库的接口 [geos](http://trac.osgeo.org/geos/)
+- **maptools**: 提供多种地图函数
+- [**dplyr**](http://cran.r-project.org/web/packages/dplyr/index.html)和 [**tidyr**](http://blog.rstudio.org/2014/07/22/introducing-tidyr/)：快速简洁的数据处理包
+- **tmap**：可以快速绘制精致的地图
+
+如果你想获取关于最近 [**sf**](https://github.com/edzer/sfr)包的信息，那可以访问 [geocompr](https://bookdown.org/robinlovelace/geocompr/)这一网站，它是即将出版的*R语言地理计算*一书的主页。
+
+你的电脑上可能已经安装了一些包。你可以通过`library`函数来测试是否安装了某一包。例如，在控制台输入`library(ggplot2)`，就可以测试**ggplot2**是否安装。如果R没有任何输出，则说明包已安装。
+
+如果你得到了一条错误提示，那你就需要使用`install.packages("ggplot2")`语句来安装该包。这个包会从综合R档案网络（CRAN）中下载。如果提示你选择一个镜像，请选择离你最近的地点。如果你还没有安装以下包，请现在下载。一个 [快速的办法](http://stackoverflow.com/questions/8175912/load-multiple-packages-at-once)就是输入下方代码：
+
+```{r, eval=FALSE}
+x <- c("ggmap", "rgdal", "rgeos", "maptools", "dplyr", "tidyr", "tmap")
+ # install.packages(x) # warning: uncommenting this may take a number of minutes
+lapply(x, library, character.only = TRUE) # load the required packages
+```
+
+\clearpage
+
+# 第二章：R语言空间数据
+
+## 教程开始和数据下载
+
+既然我们已经见识了R的基本语法并下载了必要的包，现在让我们来载入一些真实的空间数据。教程的下一部分主要是对空间对象进行绘图和查询。
+
+```{r, echo=FALSE}
+# TODO: add info about accessing online data from R
+```
+
+本教程所用数据可在此下载
+[https://github.com/Robinlovelace/Creating-maps-in-R](https://github.com/Robinlovelace/Creating-maps-in-R)。
+点击屏幕右侧的“下载ZIP”按钮即可开始下载，之后在你的电脑上进行解压。
+
+在顶部菜单点击`文件 -> 打开文件`，即可打开已经存在的‘用R语言创建地图’这一项目。
+
+另种方式是使用*项目菜单*来打开或创建新项目。我们*强烈建议*你使用RStudio的项目进行管理，你的文件会被归入各种子文件夹（例如`代码`，`输入数据`和`图片`），这样可以避免混乱（图2）。RStudio的主页有对该软件的概述 [rstudio.com/products/rstudio/](http://www.rstudio.com/products/rstudio/)。
+
+```{r, fig.cap="RStudio工作环境：通过项目菜单打开Creating-maps-in-R项目", echo=FALSE}
+grid.raster(readPNG("figure/rstudio-proj.png"))
+```
+
+打开一个项目时，工作路径会被设置为该项目的母文件夹。在本案例中，就是`用R语言创建地图`这一文件夹。如果你想改变工作路径，你可以使用页面顶部的‘会话’菜单或者使用 [`setwd`命令](http://www.statmethods.net/interface/workspace.html)。
+
+```{r, eval= F, echo=FALSE}
+# Use the `setwd` command to set the working directory to the folder where the data is saved.
+# If your username is "username" and you saved the files into a
+# folder called "Creating-maps-in-R-master" on your Desktop, for example,
+# you would type the following:
+# setwd("C:/Users/username/Desktop/Creating-maps-in-R-master/")
+```
+
+我们首先要载入的数据一个叫“london_sport”的shapefile文件，它在项目里的“数据”文件夹下。在用R打开这一数据前，建议你先用文件浏览器浏览一下要输入的数据集。你会注意到有很多文件都叫“london_sport”，但是文件扩展名各不相同。这是因为shapefile文件由很多文件组成，例如.prj，.dbf和.shp。 
+
+你也可以尝试用传统的地理信息系统（例如QGIS）打开“london_sport.shp”文件，看一看一个shapefile文件包含了些什么。
+
+你也可以用电子表格程序（例如LibreOffice Calc）打开“london_sport.dbf”文件，看一看文件包含了些什么。一旦你了解了输入数据，就可以在R中打开这些数据了。在R中打开文件的方法有很多，最常用的就是`readOGR`函数。它来自**rgdal**包，可以自动提取相关数据信息。
+
+**rgdal**是R到“地理空间抽象库（GDAL）”的接口。GDAL被其他开源的地理信息系统包所使用（例如QGIS），它也让R可以处理很多空间数据格式。如果你还没有*安装*并加载**rgdal**包（参见“准备”部分），现在请这么做。
+
+```{r, message=FALSE, results='hide'}
+library(rgdal)
+lnd <- readOGR(dsn = "data/london_sport.shp")
+# lnd <- readOGR(dsn = "data", layer = "london_sport")
+```
+
+在上述代码的第二行，`readOGR`被调用，它载入了一个shapefile文件并将其赋值给一个新的空间对象，名为`lnd`，也就是伦敦（London）的缩写。
+
+`readOGR`是**rgdal**包中的一个*函数*， 第一个*参数*是`dsn`，也就是数据源名称（data source name）的缩写，它是地理数据载入的文件或路径名。在最新的**rgdal**包中，不再需要给`layer`参数赋值（如代码中的第三行所示，该行已被注释）。^[我们提供第三行代码是为了展示历史的一面，也提供了一个机会探讨R的函数和其参数（函数括号内的值）。注意到参数由逗号分隔。它们的顺序十分重要。你不需要输入参数的名称，例如`dsn =`或`layer =`，因为R知道它们出现的顺序。你只需要输入`readOGR("data", "london_sport")`即可。不过在学习新的函数时，写清楚参数名称有利于学习，因此接下来我们还会保留参数名称。]
+
+`lnd`对象现在代表了2001年伦敦各区的人口情况，以及参与体育活动的人口占比。数据来源于
+[运动人群调查](http://data.london.gov.uk/datastore/package/active-people-survey-kpi-data-borough).
+边界的数据来源于 [英国地形测绘局](http://www.ordnancesurvey.co.uk/oswebsite/opendata/).
+
+如果你想了解更多关于载入不同类型空间数据的信息，可以参考`readOGR`的帮助文档。你可以输入`?readOGR`。如果想要另一个GPS轨迹载入的例子，可以参考Cheshire和Lovelace在2014年撰写的文献。
+
+## R语言空间数据的结构
+
+空间数据对象，例如`lnd`，是由多个不同的*插槽*组成的。对于非地理属性数据，*插槽*是`@data`；对于线性数据，则是`@polygons`或`@lines`。作为数据的*插槽*可以被看作一个属性表，而作为地理数据的*插槽*则是构成物理界限的线。具体的*插槽*可以用`@`得到。现在让我们用基本的命令来分析上述运动对象：
+
+```{r}
+head(lnd@data, n = 2)
+mean(lnd$Partic_Per) # short for mean(lnd@data$Partic_Per) 
+```
+
+请看输出的结果（特别是表格的形式和列的名称）。在上述代码块中有两个重要的符号：第一行中的`@`符号指向`lnd`对象的数据*插槽*。`$`符号指向`Partic_Per`这一列，它是数据*插槽*中的一个变量。数据*插槽*是由第一行代码得到的。
+
+第一行中的`head`函数可以展示数据的前几行（请尝试输入`head(lnd@data)`和`?head`获得更多信息）。第二行计算了伦敦不同地区参与体育运动的平均人数占比。我们可以这么做是因为我们处理的是数值数据。你可以通过下方命令查看空间数据库中每个变量的类型。
+
+```{r}
+sapply(lnd@data, class)
+```
+
+这告诉我们`Pop_2001`变量是一个因子。我们可以通过下方代码*强制*将变量转换为正确的数值数据。
+
+```{r}
+lnd$Pop_2001 <- as.numeric(as.character(lnd$Pop_2001))
+```
+
+再次输入该函数，不过这次请在中途按下`tab`键。RStudio有自动补全功能，可以节省你的时间（图3）。
+
+```{r, fig.height=1.3, echo=FALSE, fig.cap="Tab自动补全：在RStudio输入`lnd@`然后按`tab`查看哪些插槽在`lnd`中"}
+grid.raster(readPNG("figure/tab-complete.png"))
+```
+
+为了进一步探索`lnd`对象，请输入`nrow(lnd)`（展示行数），这记录了数据集中包含了多少地区。你也可以试着输入`ncol(lnd)`。
+
+我们所载入的数据存在一个问题，那就是没有坐标指示系统（CRS）。
+
+```{r}
+lnd@proj4string
+```
+
+## 基础绘图
+
+我们已经知道了一些R语言中空间数据对象的结构，现在让我们开始作图。注意到用*地理*数据画图基本上包含在`@polygons`插槽中。
+
+```{r, eval=FALSE}
+plot(lnd) # not shown in tutorial - try it on your computer
+```
+
+`plot`是R中最有用的函数之一，因为它对于不同数据可以作出不同的图（计算机学家称该性质为多态）。输入另一个对象（例如`plot(lnd@data)`）就会得到完全不同的图像。因此R语言十分智能，它可以猜到你想对数据做些什么。
+
+R提供了强大且简洁的方法来获取数据的子集，只需要使用方括号即可，参加下例：
+
+```{r}
+# select rows of lnd@data where sports participation is less than 13
+lnd@data[lnd$Partic_Per < 13, 1:3]
+```
+
+上述代码选取了`lnd`对象中体育参与低于13的行，因此第17，21和32行被选了出来，也就是哈罗区，纽汉姆区和市中心。方括号是这样使用的：逗号前的部分选取行，逗号后的部分选取列。例如，如果数据帧有1000列，而你只对前两列感兴趣，那你可以在逗号后输入`1:2`。“：”符号的意思是“到”，比如第一列到第二列。你可以尝试使用方括号（你可以猜一猜`lnd@data[1:2, 1:3]`的结果，并用R来测试你的猜想）。
+
+到现在我们只查看了`lnd`对象中的数据*插槽*（`@data`），但是方括号还可以选取空间数据对象的子集，例如地理*插槽*。用和刚才相似的方法即可选取体育参与度高的地区。
+
+```{r, eval=FALSE}
+# Select zones where sports participation is between 20 and 25%
+sel <- lnd$Partic_Per > 20 & lnd$Partic_Per < 25
+plot(lnd[sel, ]) # output not shown here
+head(sel) # test output of previous selection (not shown)
+```
+
+该图十分有用，但是它只显示了达到标准的地区。如果还想看到其他地区，则可以设置参数`add = TRUE`。（也可以使用`add = T`，但本教程倾向于完整输入，以避免歧义）。你认为下方代码中的`col`参数指什么（见图5）？
+
+如果你想同时使用多标准进行筛选，使用`&`符号。 
+
+```{r fig.cap="蓝色表示伦敦高运动参与地区"}
+plot(lnd, col = "lightgrey") # plot the london_sport object
+sel <- lnd$Partic_Per > 25
+plot(lnd[ sel, ], col = "turquoise", add = TRUE) # add selected zones to map
+```
+
+恭喜！你已经成功查询并可视化了一个空间对象。伦敦哪个地区的体育参与度最高？地图可以告诉我们答案。不要过分纠结具体的实现原理。你现在已经学会了R的基本操作，接下来则会涉及更多细节。
+
+作为一个附加的环节，选取并绘制靠近伦敦中心的区域（见图5）。编程需要思维缜密，这样会帮助我们更准确地定义问题：
+
+> **挑战**：选取相应的区域，这些区域的中心距内伦敦的中心小于10km。
+^[绘制改图的代码可参见 [README.Rmd](https://github.com/Robinlovelace/Creating-maps-in-R/blob/master/README.Rmd)  . 可以输入以下代码进行加载`file.edit("README.Rmd")`或者在线访问 [github.com/Robinlovelace/Creating-maps-in-R/blob/master/README.Rmd](https://github.com/Robinlovelace/Creating-maps-in-R/blob/master/README.Rmd).]
+
+```{r, echo=FALSE, fig.cap="中心距伦敦中心10km以内的区域。注意区分那些仅与缓冲区相交的区域（浅蓝）和中心在缓冲区内的区域（深蓝）。", message=FALSE}
+library(rgeos)
+plot(lnd, col = "grey")
+# find London's geographic centroid (add ", byid = T" for all)
+cent_lnd <- gCentroid(lnd[lnd$name == "City of London",]) 
+points(cent_lnd, cex = 3)
+# set 10 km buffer
+lnd_buffer <- gBuffer(spgeom = cent_lnd, width = 10000) 
+
+# method 1 of subsetting selects any intersecting zones
+lnd_central <- lnd[lnd_buffer,] # the selection is too big!
+# test the selection for the previous method - uncomment below
+plot(lnd_central, col = "lightblue", add = T)
+plot(lnd_buffer, add = T) # some areas just touch the buffer
+
+# method2 of subsetting selects only points within the buffer
+lnd_cents <- SpatialPoints(coordinates(lnd),
+  proj4string = CRS(proj4string(lnd))) # create spatialpoints
+sel <- lnd_cents[lnd_buffer,] # select points inside buffer
+points(sel) # show where the points are located
+lnd_central <- lnd[sel,] # select zones intersecting w. sel
+plot(lnd_central, add = T, col = "lightslateblue", 
+  border = "grey")
+plot(lnd_buffer, add = T, border = "red", lwd = 2)
+
+# Add text to the plot!
+text(coordinates(cent_lnd), "Central\nLondon")
+```
+
+## 选取象限
+
+<!-- In this example we will now interrogate the shapefile for London and split it into quadrants using lines of latitude and longitude. This will work in a similar way to the previous example. Once we have the centre point we will then use this create the lines of latitude and longitude on which the centre of the wards will be tested against. -->
+下列代码可以帮助我们理解R语言中空间数据的工作方式。
+
+
+```{r}
+# Find the centre of the london area
+easting_lnd <- coordinates(gCentroid(lnd))[[1]]
+northing_lnd <- coordinates(gCentroid(lnd))[[2]]
+
+# arguments to test whether or not a coordinate is east or north of the centre
+east <- sapply(coordinates(lnd)[,1], function(x) x > easting_lnd)
+north <- sapply(coordinates(lnd)[,2], function(x) x > northing_lnd)
+
+# test if the coordinate is east and north of the centre
+lnd$quadrant <- "unknown" # prevent NAs in result
+lnd$quadrant[east & north] <- "northeast"
+```
+
+> **挑战**：参考上述代码，请尝试找到其余3个象限（区域），并按照图6进行着色。提示 - 你可以使用**llgridlines**函数加上经纬度。附加任务是去除边界，这样地图只剩下4个多边形。
+
+```{r, echo=FALSE, fig.cap="伦敦的4个区域且去除了边界。挑战：创建一个与之类似的图", fig.show='hold'}
+lnd$quadrant[!east & north] <- "northwest"
+lnd$quadrant[east & !north] <- "southeast"
+lnd$quadrant[!east & !north] <- "southwest"
+plot(lnd)
+plot(lnd[east & north,], add = TRUE, col = "red" )
+llgridlines(lnd, lty= 3, side ="EN", offset = -0.5)
+
+lnd_disolved = rgeos::gUnaryUnion(spgeom = lnd, id = lnd$quadrant)
+
+library(tmap)
+qtm(lnd, fill = "quadrant") +
+  tm_shape(lnd_disolved) +
+  tm_borders(lwd = 9)
+```
+
+<!-- ## Attribute data -->
+
+<!-- As we discovered in the previous section, shapefiles contain both attribute data and geometry data, both of which are automatically loaded into R when the  -->
+<!-- `readOGR` function is used. Let's look again at the attribute data of the `lnd` object by looking at the headings contained within it: `names(lnd)` -->
+<!-- Remember, the attribute data is contained in the `data` *slot* that can be accessed using the `@` symbol: `lnd@data`. This is useful if you do not wish to work with the spatial components of the data at all times. -->
+
+<!-- Type `summary(lnd)` to get some additional information about the -->
+<!-- data object. Spatial objects in R contain -->
+<!-- much additional information: -->
+
+<!-- ``` -->
+<!-- summary(lnd) -->
+
+<!-- ## Object of class SpatialPolygonsDataFrame -->
+<!-- ## Coordinates: -->
+<!-- ## min max -->
+<!-- ## x 503571.2 561941.1 -->
+<!-- ## y 155850.8 200932.5 -->
+<!-- ## Is projected: TRUE -->
+<!-- ## proj4string : -->
+<!-- ## [+proj=tmerc +lat_0=49 +lon_0=-2 +k=0.9996012717 ....] -->
+
+<!-- ... -->
+<!-- ``` -->
+
+<!-- The first line of the above output tells us that `lnd` is a special spatial class: a `SpatialPolygonsDataFrame`. -->
+<!-- This means it is composed of -->
+<!-- various polygons, each of which has a number of attributes. -->
+<!-- (Summaries of the attribute data are also provided, but are not printed above.) This is the ideal -->
+<!-- class of data to represent administrative zones. The coordinates tell -->
+<!-- us what the maximum and minimum x and y values are (the spatial extent of the data - useful for plotting). -->
+<!-- Finally, we are told something of the coordinate reference system -->
+<!-- with the `Is projected` and `proj4string` lines. -->
+<!-- In this case, we have a projected system, which means the data is relative to some point on the Earth's surface. -->
+<!-- We will cover reprojecting data in the next part of the tutorial. -->
+
+\clearpage
+
+# 第三章：创建并处理空间数据
+
+```{r, echo=FALSE}
+# should be manipulating and plotting. TODO: talk about base graphics
+```
+
+除了可视化和查询，地理信息系统还必须要有创建和编辑空间数据的功能。R的空间数据包提供了一系列强大的功能来创建处理空间数据。
+
+*再投影*和*连接/剪裁*是两个基本的地理信息系统中的操作，所以在本部分我们会探索如何在R中实现它们。首先我们将非空间数据和空间数据进行连接，这样它们就可以绘制地图了。最后我们会讨论空间连接，两个空间对象的信息会根据空间位置连接起来。
+
+## 创建新的空间数据
+
+R对象可以通过输入类的名称创建。以`vector`（向量）和`data.frame`（数据帧）对象为例，创建的方式如下：
+
+```{r}
+vec <- vector(mode = "numeric", length = 3)
+df <- data.frame(x = 1:3, y = c(1/2, 2/3, 3/4))
+```
+
+我们可以通过`class()`查看新对象的类：
+
+```{r}
+class(vec)
+class(df)
+```
+
+空间数据亦然。输入必须是数值矩阵或者数据帧：
+
+```{r}
+sp1 <- SpatialPoints(coords = df)
+```
+
+我们创建了一个空间点对象，它是一个基础的空间数据类型。（其他分别是线、多边形、像素，可以通过`SpatialLines`、`SpatialPolygons`和`SpatialPixels`创建。）每一种空间数据类型都可以接受非空间数据，通过加入`DataFrame`和`SpatialPointsDataFrame()`来实现。例如，可以用相关的`data.frame`创建点对象。数据集中的行数一定要和空间对象的特征数相同，例如`sp1`中该值为3。
+
+```{r}
+class(sp1)
+spdf <- SpatialPointsDataFrame(sp1, data = df)
+class(spdf)
+```
+
+上述代码从`df`中加入数据，延伸了原有的`sp1`对象。为了体会空间数据类的严格，我们可以试着用`mat`代替`df`；结果会得到报错。所有空间数据类都通过类似的方法创建，尽管`SpatialLines`（空间线对象）和`SpatialPolygons`（空间多边形对象）更为复杂。通常，空间数据会从外部文件读入，例如使用`readOGR()`。和我们之前创建的空间对象不同，大多数空间数据都有坐标指示系统（CRS）。
+
+## 投影：用R设置和改变坐标指示系统
+
+空间对象的*坐标指示系统*（CRS）定义了它们在地球表面的位置。你可能已经注意到在先前`lnd`概述中的`proj4string`：其信息表示了它的CRS。空间数据总应该有一个CRS。如果CRS缺失，但是我们知道正确的CRS，可以这么做：
+
+```{r, warning=FALSE}
+proj4string(lnd) <- NA_character_ # remove CRS information from lnd
+proj4string(lnd) <- CRS("+init=epsg:27700") # assign a new CRS
+```
+
+当坐标指示系统改变时，R会发出警告。这样用户就可以知道他们只是改变了CRS，而非对数据*再投影*。可以通过
+[EPSG代码](http://www.epsg-registry.org/)轻松参考不同的投影。
+
+在该体系下，`27700`表示英国的国家网格。‘WGS84’（`epsg:4326`）是很常用的CRS。下列代码展示了如何搜索可用的EPSG代码并在WGS84中创建一个新的`lnd`对象：^[笔记：输入`projInfo()`可以得到更多的CRS选项。 [spatialreference.org](http://spatialreference.org/)提供了更多关于EPSG代码的信息。]
+
+```{r}
+EPSG <- make_EPSG() # create data frame of available EPSG codes
+EPSG[grepl("WGS 84$", EPSG$note), ] # search for WGS 84 code 
+lnd84 <- spTransform(lnd, CRS("+init=epsg:4326")) # reproject
+```
+
+在上述代码中，`spTransform`将`lnd`的坐标转换为了通用的WGS84坐标指示系统。既然我们已经将`lnd`转为更常用的CRS，我们应该将它保存下来。R高效地将数据存为`.RData`或`.Rds`格式。前者限制更多，保留了对象的名称，因此我们选择使用后者。
+
+```{r}
+# Save lnd84 object (we will use it in Part IV)
+saveRDS(object = lnd84, file = "data/lnd84.Rds")
+```
+
+现在我们通过`rm`命令删除了`lnd84`对象。这在之后会十分有用。（在RStudio中，注意到它也从右上角的环境中消失了。）
+
+```{r}
+rm(lnd84) # remove the lnd object
+# we will load it back in later with readRDS(file = "data/lnd84.Rds")
+```
+
+## 属性连接
+
+属性连接可以将更多的信息加入到我们的多边形中。例如在`lnd`对象里，我们有4个属性变量，可以通过输入`names(lnd)`找到。但如果我们想从外部加入更多的变量呢？我们会通过伦敦各区的犯罪记录来做示范。
+
+为了再次强调我们的出发点，让我们重新导入“london_sport”的shapefile文件为一个新的对象，并绘图：
+
+```{r, eval=FALSE}
+library(rgdal) # ensure rgdal is loaded
+# Create new object called "lnd" from "london_sport" shapefile
+lnd <- readOGR("data/london_sport.shp")
+plot(lnd) # plot the lnd object (not shown)
+nrow(lnd) # return the number of rows (not shown)
+```
+
+```{r, eval=FALSE, echo=FALSE}
+## Downloading additional data
+
+# Because we are using borough-level data, and boroughs are official administrative
+# zones, there is much data available at this level. We will use the example
+# of crime data to illustrate this data availability, and join this with the current
+# spatial dataset. As before, we can download and import the data from within R:
+  
+# download.file("http://data.london.gov.uk/datafiles/crime-community-safety/mps-
+# recordedcrime-borough.csv", destfile = "mps-recordedcrime-borough.csv")
+# uncomment and join the above code to download the data
+crime_data <- read.csv("data/mps-recordedcrime-borough.csv",
+  stringsAsFactors = FALSE)
+head(crime_data)
+
+# Initially, the `read.csv` may an error. If not the `head` command should show
+# that the dataset has not loaded correctly. This was due to an unusual
+# encoding used in the text file: hopefully you will not
+# encounter this problem in your research, but it highlights the importance
+# of checking the input data. To overcome this issue we
+# can set the encoding manually, and continue.
+
+# variant: markdown_github
+```
+
+我们即将载入`lnd`对象的非空间数据包含了伦敦的犯罪记录。它被存在一个叫“mps-recordedcrime-borough”的逗号分隔值文件中
+[(`.csv`)](https://raw.githubusercontent.com/Robinlovelace/Creating-maps-in-R/master/data/mps-recordedcrime-borough.csv)。如果你先用其他电子表格应用打开该  [文件](https://raw.githubusercontent.com/Robinlovelace/Creating-maps-in-R/master/data/mps-recordedcrime-borough.csv)，我们可以看到每一行都表示一种犯罪。我们使用一个叫`aggregate`的函数，得到每个区的犯罪总水平，之后即可加入到我们的`lnd`空间数据集中。创建一个叫`crime_data`的新对象来储存该数据。
+
+```{r, echo=FALSE, eval=FALSE}
+# # convert crime_data and rename cols
+# crime_data <- read.csv("data/mps-recordedcrime-borough.csv",
+#   fileEncoding = "UCS-2LE")
+# names(crime_data)
+# crime_data <- rename(crime_data, DName = Spatial_DistrictName)
+# write.csv(crime_data, file = "data/mps-recordedcrime-borough.csv")
+```
+
+
+```{r, results='hide'}
+# Create and look at new crime_data object
+crime_data <- read.csv("data/mps-recordedcrime-borough.csv",
+  stringsAsFactors = FALSE)
+
+head(crime_data$CrimeType) # information about crime type
+
+# Extract "Theft & Handling" crimes and save
+crime_theft <- crime_data[crime_data$CrimeType == "Theft & Handling", ]
+head(crime_theft, 2) # take a look at the result (replace 2 with 10 to see more rows)
+
+# Calculate the sum of the crime count for each district, save result
+crime_ag <- aggregate(CrimeCount ~ Borough, FUN = sum, data = crime_theft)
+# Show the first two rows of the aggregated crime data
+head(crime_ag, 2)
+```
+
+你并不需要在第一次尝试的时候就完全理解这些操作：现阶段只需要把命令敲下来且简单地思考一下它们的输出即可。这里还有一些你之前可能没见过但将来会有用的东西：
+
+- 在文件代码的第一行我们指明了它的地点（可以在你的文件浏览器中检查确认这点）。
+
+- `==`函数是用来选定满足特定条件的观测的，即选定那些等于设定值的观测作为范围，在本例中是所有涉及“偷窃及处理”的犯罪。
+
+- `~` 意为“基于”：我们基于地区名称合计汇总了`CrimeCount`这一变量。
+
+现在我们有了各个镇的犯罪数据，进一步挑战就在于把它合并进`lnd`对象中。我们将的合并将基于来自`crime_ag`对象的`Borough`变量和来自`lnd`对象的`name`变量。由于地区名字不一定完全匹配，所以并不总是能直接基于名字来合并对象。我们来看一下哪些在`crime_ag`对象中的名字能够匹配上空间数据对象`lnd`：
+
+```{r}
+# Compare the name column in lnd to Borough column in crime_ag to see which rows match.
+lnd$name %in% crime_ag$Borough
+# Return rows which do not match
+lnd$name[!lnd$name %in% crime_ag$Borough]
+```
+
+
+上述代码的第一行用了`%in%`命令来指明哪些在`lnd$name`中的值也被包含在汇总数据犯罪数据的镇区名字中。结果显示除一个镇外，其他的镇名都能匹配上。第二行代码告诉我们这个例外是“伦敦城”。这一个名字在犯罪数据中是没有的，可能是由于伦敦城有自己独立的警察队伍。（可以查看 [www.cityoflondon.police.uk/](https://www.cityoflondon.police.uk/)来确认）
+（在犯罪数据中没匹配上`lnd$name`的城镇名为空NULL。可以键入`crime_ag$Borough[!crime_ag$Borough %in% lnd$name]`来确证。）
+
+
+> **挑战**：指明在“NULL”镇区发生犯罪的数量少于4000。
+
+核验过未匹配镇区的数据后，我们就可以将空间和非空间的数据集合并了。推荐使用来自**dplyr**包的`left_join`函数，但是`merge`函数也一样可以使用。注意当我们引用一个未被载入的函数时，不会产生任何效果，这就说明我们需要再把它装载上：
+
+```{r, results='hide', eval=FALSE}
+library(dplyr) # load dplyr 
+```
+
+
+我们使用`left_join`因为我们想让数据框的长度保持不变，且来自新数据的变量附加在新的列中（可查看`?left_join`）。
+而`*join`命令（包括`inner_join` 和 `anti_join`）假设了默认状态下匹配的变量有相同的名字。
+这里我们将指明在两个数据集中变量之间的关联：
+
+```{r, echo=FALSE, message=FALSE}
+# Load dplyr package
+library(dplyr)
+```
+
+
+```{r, results='hide'}
+head(lnd$name) # dataset to add to (results not shown)
+head(crime_ag$Borough) # the variables to join
+
+# head(left_join(lnd@data, crime_ag)) # test it works
+lnd@data <- left_join(lnd@data, crime_ag, by = c('name' = 'Borough'))
+```
+
+查看一下这个新的`lnd@data`对象。应该可以看到新的变量被加上去了，意味着属性合并成功了。恭喜你！你现在可以绘制分镇区的伦敦偷窃犯罪率图了（见图8）。
+
+```{r, eval=FALSE}
+library(tmap) # load tmap package (see Section IV)
+qtm(lnd, "CrimeCount") # plot the basic map
+```
+
+
+```{r, echo=FALSE, eval=FALSE}
+# This is the modified version of the code, to create the map displayed
+library(tmap) 
+library(tmaptools)
+lnd_wgs = spTransform(lnd, CRS("+init=epsg:4326"))
+osm_tiles = read_osm(bbox(lnd_wgs))
+lnd_wgs$Thefts <- lnd$CrimeCount / 10000 
+tm_shape(osm_tiles) +
+  tm_raster() +
+  tm_shape(lnd_wgs) +
+  tm_fill("Thefts", fill.title = "Thefts\n(10000)", scale = 0.8, alpha = 0.5) +
+  tm_layout(legend.position = c(0.89,0.02))
+```
+
+```{r, echo=FALSE, fig.cap="每个镇区盗窃发生的数量", out.width="48%", fig.align="center"}
+grid.raster(readPNG("figure/lnd-crime.png"))
+```
+
+> **可选挑战：**建立一个基于伦敦其他变量的地图
+
+有了在这个部分中你学习到的属性合并技术，你现在应该可以从很多来源中获取数据集，比如 [data.london.gov.uk](http://data.london.gov.uk/dataset/london-borough-profiles)，然后着手将他们合并入你的地理数据中。
+
+<!-- Using this dataset and the methods developed above, Figure 8 was -->
+<!-- created: the proportion of council seats won by the Conservatives -->
+<!-- in the 2014 local elections. The **challenge** is to create  -->
+<!-- a similar map of a different variable (you may need to skip to -->
+<!-- Part IV to plot continuous variables).^[Hint: the solution relies on the -->
+<!-- **rgeos** function `gCentroid()`. To -->
+<!-- see how this map was created, see the code -->
+<!-- in README.Rmd at [github.com/Robinlovelace/Creating-maps-in-R/blob/master/README.Rmd](https://github.com/Robinlovelace/Creating-maps-in-R/blob/master/README.Rmd).] -->
+
+<!-- ```{r, echo=FALSE, results='hide', message=FALSE, warning=FALSE, fig.cap="Proportion of council seats won by Conservatives in the 2014 local elections using data from data.london.gov and joined using the methods presented in this section", , out.width="48%", fig.align="center"} -->
+<!-- # install.packages("ggmap") -->
+<!-- library(maptools) -->
+<!-- library(ggmap) -->
+<!-- borough_dat <- read.csv("data/london-borough-profiles-2014.csv") -->
+<!-- names(borough_dat) -->
+<!-- borough_dat <- dplyr::rename(borough_dat, conservative = Proportion.of.seats.won.by.Conservatives.in.2014.election) -->
+<!-- borough_dat$conservative <- as.numeric(as.character(borough_dat$conservative)) -->
+<!-- summary(borough_dat$conservative) -->
+<!-- head(lnd$ons_label) -->
+<!-- head(borough_dat$Code) -->
+<!-- # check the joining variables work -->
+<!-- summary(borough_dat$Code %in% lnd$ons_label) -->
+<!-- # select the data to join -->
+<!-- to_join <- select(borough_dat, Code, conservative) -->
+<!-- lnd@data <- left_join(lnd@data, to_join, by = c('ons_label' = 'Code')) -->
+
+<!-- lnd_f <- fortify(lnd, region = "ons_label") -->
+<!-- lnd_f <- left_join(lnd_f, to_join, by = c('id' = 'Code')) -->
+
+<!-- map <- ggplot(lnd_f, aes(long, lat, group = group, fill = conservative)) + -->
+<!--   geom_polygon() + -->
+<!--   coord_equal() + -->
+<!--   labs(x = "Easting (m)", y = "Northing (m)", fill = "% Tory") + -->
+<!--   scale_fill_continuous(low = "grey", high = "blue") + -->
+<!--   theme_nothing(legend = T) -->
+<!-- map -->
+<!-- ``` -->
+
+## 剪裁与空间合并
+
+
+除了基于属性合并（比如镇区名），我们还可以在R中进行 [空间合并](http://help.arcgis.com/en/arcgisdesktop/10.0/help/index.html#//00080000000q000000)。我们用交通基础设施点作为用来合并的空间数据，目的是找到在伦敦各个镇区各有多少这些点。
+
+```{r, results='hide'}
+library(rgdal)
+# create new stations object using the "lnd-stns" shapefile.
+stations <- readOGR(dsn = "data/lnd-stns.shp")
+# stations = read_shape("data/lnd-stns.shp") # from tmap
+proj4string(stations) # this is the full geographical detail.
+proj4string(lnd) # what's the coordinate reference system (CRS)
+bbox(stations) # the extent, 'bounding box' of stations
+bbox(lnd) # return the bounding box of the lnd object
+```
+
+
+`proj4string()`函数显示`stations`的坐标参考系统（CRS）和我们`lnd`对象的不一样。OSGB 1936 (或 [EPSG 27700](http://spatialreference.org/ref/epsg/27700/))是英国官方的CRS，所以我们将'stations'对象转为成这样：
+ 
+```{r fig.cap="站点的抽样及绘图"}
+# Create reprojected stations object
+stations <- spTransform(stations, CRSobj = CRS(proj4string(lnd)))
+plot(lnd) # plot London 
+points(stations) # overlay the station points
+```
+
+
+注意现在`stations`的点覆盖在各镇区上，但`stations`的空间范围比`lnd`的要大。
+
+为了裁剪`stations`以使只有那些落在伦敦镇区的被保留下来，我们可以使用`sp::over`，或者就用取子集的方括号（键入`?gIntersects`来查找其他完成此项操作的方法）：
+
+```{r fig.cap="剪裁后的站点数据集"}
+stations <- stations[lnd, ] 
+plot(stations) # test the clip succeeded
+```
+
+```{r, echo=F,eval=FALSE}
+# save(lnd, file="data/lnd.RData")
+# save(stations, file="data/stations.RData")
+```
+
+<!-- The above line of code says: "output all `stations` within -->
+<!-- the `lnd` object bounds", a concise way -->
+<!-- of clipping that is consistent -->
+<!-- with R's syntax for non-spatial clipping. -->
+<!-- To prove it worked, only stations within the London boroughs appear in the plot. -->
+
+`gIntersects`可以达到相同的结果，但需要更多代码。（查看 [www.rpubs.com/RobinLovelace](http://www.rpubs.com/RobinLovelace/11796)以了解更多信息）
+
+<!-- It may seem confusing that two different functions -->
+<!-- can be used to generate the same result. However, -->
+<!-- this is a common issue in R; the question -->
+<!-- is finding the most appropriate solution. -->
+
+<!-- In its less concise form (without use of square brackets), -->
+<!-- `over` takes two main input arguments: -->
+<!-- the target layer (the layer to be altered) and the -->
+<!-- source layer by which the target layer is to be clipped. -->
+<!-- The output of `over` is a data frame of the same -->
+<!-- dimensions as the original object (in this case `stations`), -->
+<!-- except that the points which fall outside the zone of interest are set to a value of `NA` ("no answer"). -->
+<!-- We can use this to make a subset of the original polygons, -->
+<!-- remembering the square bracket notation described in the first section. -->
+<!-- We create a new object, `sel` (short for "selection"), -->
+<!-- containing the indices of all relevant polygons: -->
+
+<!-- ```{r, eval=FALSE} -->
+<!-- sel <- over(stations_backup, lnd) -->
+<!-- stations2 <- stations_backup[!is.na(sel[,1]),] -->
+<!-- ``` -->
+
+<!-- Typing `summary(sel)` should provide insight into how this -->
+<!-- worked: it is a data frame with 1801 NA values, representing -->
+<!-- zones outside of the London polygon. -->
+<!-- Note that the preceding two lines of code is equivalent to the -->
+<!-- single line of code, `stations <- stations[lnd, ]`. -->
+<!-- The next section demonstrates -->
+<!-- spatial aggregation, a more advanced version of spatial subsetting. -->
+
+<!-- ## Spatial aggregation -->
+
+<!-- As with R's very terse code for spatial subsetting, the base function -->
+<!-- `aggregate` (which provides summaries of variables based on some grouping variable) -->
+<!-- also behaves differently when the inputs are spatial objects. -->
+
+<!-- ```{r} -->
+<!-- stations_agg <- aggregate(x = stations["CODE"], by = lnd, FUN = length) -->
+<!-- head(stations_agg@data) -->
+<!-- ``` -->
+
+<!-- The above code performs a number of steps in just one line: -->
+
+<!-- - `aggregate` identifies which `lnd` polygon (borough) each `station` is located in and groups them accordingly. The use of the syntax `stations["CODE"]` tells R that we are -->
+<!-- interested in the spatial data from `stations` and its `CODE` variable (any variable -->
+<!-- could have been used here as we are merely counting how many points exist). -->
+<!-- - It counts the number of `stations` points in each borough, using the function `length`. -->
+<!-- - A new spatial object is created, with the same geometry as `lnd`, and assigned the name `stations_agg`, the count of stations. -->
+
+<!-- It may seem confusing that the result of the aggregated function is a new shape, -->
+<!-- not a list of numbers --- this is because values are assigned to the elements within -->
+<!-- the `lnd` object. To extract the raw count data, one could enter `stations_agg$CODE`. -->
+<!-- This variable could be added to the original `lnd` object as a new field, as follows: -->
+
+<!-- ```{r} -->
+<!-- lnd$n_points <- stations_agg$CODE -->
+<!-- ``` -->
+
+<!-- As shown below, the spatial implementation of -->
+<!-- `aggregate` can provide summary statistics of variables, as well as simple counts. -->
+<!-- In this case we take the variable `NUMBER` -->
+<!-- and find its mean value for the stations in each ward.^[See the  -->
+<!-- miniature Vignette 'Clipping and aggregating spatial data with -->
+<!-- gIntersects' for more information on this: http://rpubs.com/RobinLovelace/83834 .] -->
+
+<!-- ```{r} -->
+<!-- lnd_n <- aggregate(stations["NUMBER"], by = lnd, FUN = mean) -->
+<!-- ``` -->
+
+<!-- For an optional advanced task, let us analyse and plot the result. -->
+
+<!-- ```{r fig.cap="Choropleth map of mean values of stations in each borough"} -->
+<!-- q <- cut_number(lnd_n$NUMBER,4) # a nice little function from ggplot2 -->
+<!-- q <- factor(q, labels = grey.colors(n = 4)) -->
+<!-- summary(q) # check what we've created -->
+
+<!-- qc <- as.character(q) # convert to character class to plot -->
+<!-- plot(lnd_n, col = qc) # plot (not shown in printed tutorial) -->
+<!-- legend(legend = paste0("Q", 1:4), fill = levels(q), "topright") -->
+<!-- areas <- sapply(lnd_n@polygons, function(x) x@area) -->
+<!-- ``` -->
+
+<!-- This results in a simple choropleth map and a new vector containing the area of each -->
+<!-- borough (the basis for Figure 11). As an additional step, try comparing the mean -->
+<!-- area of each borough with the -->
+<!-- mean value of `stations` points within it: `plot(lnd_n$NUMBER, areas)`. -->
+
+<!-- *Adding different symbols for tube stations and train stations* -->
+
+<!-- Imagine now that we want to display all tube and train stations -->
+<!-- on top of the previously created choropleth map. How would we do this? -->
+<!-- The shape of points in R is determined by the `pch` argument, as demonstrated by the -->
+<!-- result of entering the following code: `plot(1:10, pch=1:10)`. -->
+<!-- To apply this knowledge to our map, try adding the following -->
+<!-- code to the chunk above (output not shown): -->
+
+<!-- ```{r, eval=F} -->
+<!-- levels(stations$LEGEND) # see A roads and rapid transit stations (RTS) (not shown) -->
+<!-- sel <- grepl("A Road Sing|Rapid", stations$LEGEND) # selection for plotting  -->
+<!-- sym <- as.integer(stations$LEGEND[sel]) # symbols -->
+<!-- points(stations[sel,], pch = sym) -->
+<!-- legend(legend = c("A Road", "RTS"), "bottomright", pch = unique(sym)) -->
+<!-- ``` -->
+
+<!-- ```{r , echo=FALSE, eval=FALSE} -->
+<!-- # , fig.cap="Symbol levels for train station types in London" -->
+<!-- q <- cut(lnd_n$NUMBER, breaks= c(quantile(lnd_n$NUMBER)), include.lowest=T) -->
+<!-- clr <- as.character(factor(q, labels = paste0("grey", seq(20, 80, 20)))) -->
+<!-- plot(lnd_n, col = clr) -->
+<!-- legend(legend = paste0("q", 1:4), fill = paste0("grey", seq(20, 80, 20)), "topright") -->
+<!-- sel <- grepl("A Road Sing|Rapid", stations$LEGEND) # selection for plotting  -->
+<!-- sym <- as.integer(stations$LEGEND[sel]) # symbols -->
+<!-- points(stations[sel,], pch = sym) -->
+<!-- legend(legend = c("A Road", "RTS"), "bottomright", pch = unique(sym)) -->
+<!-- ``` -->
+
+<!-- The above block of code first identifies which types of transport -->
+<!-- points are present in the map with `levels` (this command only works on -->
+<!-- factor data). Next we select a subset of `stations` using a new command, `grepl`, to -->
+<!-- determine which points we want to plot. Note that `grepl`'s first argument -->
+<!-- is a text string (hence the quote marks) and the second is a factor -->
+<!-- (try typing `class(stations$LEGEND)` to test this). -->
+<!-- `grepl` uses *regular expressions* to match whether each element in a vector -->
+<!-- of text or factor names match the text pattern we want. In this case, -->
+<!-- because we are only interested in roundabouts that are A roads and -->
+<!-- Rapid Transit systems (RTS). Note the use of the vertical separator `|` to -->
+<!-- indicate that we want to match `LEGEND` names that contain either "A Road" -->
+<!-- *or* "Rapid". Based on the positive matches (saved as `sel`, a vector of -->
+<!-- `TRUE` and `FALSE` values), we subset the stations. Finally we plot these as points, -->
+<!-- using the integer of their name to decide the symbol and add a legend. -->
+<!-- (See the documentation of `?legend` for detail on the complexities of -->
+<!-- legend creation in R's base graphics.) -->
+
+<!-- This may seem a frustrating and unintuitive way of altering -->
+<!-- map graphics compared with something like QGIS. That's because it is! -->
+<!-- It may not be worth stressing too -->
+<!-- much about base graphics because there are intuitive alternatives -->
+<!-- for quickly creating beautiful maps in R, including -->
+<!-- **tmap**, **ggplot** and **leaflet**.  -->
+
+\clearpage
+
+# 第四章：用tmap, ggplot2和leaflet绘制地图
+
+<!-- This section introduces -->
+<!-- alternative methods for creating maps with R that overcome -->
+<!-- some of the limitations and clunkiness of R's base graphics.  -->
+<!-- Having worked hard to manipulate the spatial data, -->
+<!-- it is now time to display the results clearly, beautifully -->
+<!-- and, in the case of **leaflet**, interactively. -->
+
+<!-- We try the newest of the three packages, **tmap**, first -->
+<!-- as it is the easiest to use. Then we progress to explore the -->
+<!-- powerful **ggplot2** paradigm before outlining **leaflet**. -->
+
+## **tmap**
+
+[**tmap**](https://github.com/mtennekes/tmap)
+是创建用于克服基础绘图和**ggmap**的局限性的。在安装了函数包后，可以用vignette函数访问关于**tmap** 的一个简要介绍：
+
+```{r, eval=FALSE}
+# install.packages("tmap") # install the CRAN version
+library(tmap)
+vignette("tmap-nutshell")
+```
+
+```{r, echo=FALSE, message=FALSE}
+library(tmap)
+```
+
+一些基础图显示了该包直观的句法和优美的默认参数设置。
+
+```{r, eval=FALSE, message=FALSE}
+qtm(shp = lnd, fill = "Partic_Per", fill.palette = "-Blues") # not shown
+```
+
+```{r, fig.cap="运动参与和人口的并排地图"}
+qtm(shp = lnd, fill = c("Partic_Per", "Pop_2001"), fill.palette = "Blues", ncol = 2) 
+```
+
+上面的图展示了tmap为不同的变量创建相邻地图的情况。通过以下的代码块创建的图（注意不是展示）证明了`tm_facets`命令的能力。注意所有由`qtm`函数创建的地图可以同样由`tm_shape`创建，在后面加上`tm_fill`（或者另一`tm_`函数）即可。
+
+```{r, fig.cap="由tmap创建的伦敦镇区分面地图", eval=FALSE}
+tm_shape(lnd) +
+    tm_fill("Pop_2001", thres.poly = 0) +
+tm_facets("name", free.coords = TRUE, drop.units = TRUE)
+```
+
+用tmap创建一个基础地图，你可以如下文所示使用`read_osm`函数，该函数来自**tmaptools**包(https://github.com/mtennekes/tmaptools)。注意你必须先将数据转换为地理坐标参考系统（*geographical*CRS）。
+
+```{r, fig.cap="2001年伦敦人口", fig.width=4}
+# Transform the coordinate reference system
+lnd_wgs = spTransform(lnd, CRS("+init=epsg:4326"))
+if(curl::has_internet()) {
+  osm_tiles = tmaptools::read_osm(bbox(lnd_wgs)) # download images from OSM
+  tm_shape(osm_tiles) + tm_raster() +
+    tm_shape(lnd_wgs) +
+    tm_fill("Pop_2001", fill.title = "Population, 2001", scale = 0.8, alpha = 0.5) +
+    tm_layout(legend.position = c(0.89, 0.02)) 
+} else {
+  tm_shape(lnd_wgs) +
+    tm_fill("Pop_2001", fill.title = "Population, 2001", scale = 0.8, alpha = 0.5) +
+    tm_layout(legend.position = c(0.89, 0.02))
+}
+```
+
+
+另一个让**tmap**地图包含基本地图的方法是键入`tmap_mode("view")`。这可使得地图由**leaflet**驱动呈现在一个可缩放的网页地图上。
+**tmap**中还有许多其他符合直觉且强大的函数。可以查看它的文件去进一步了解：
+
+```{r, eval=FALSE}
+?tmap # get more info on tmap
+```
+
+<!-- A more established plotting paradigm is **ggplot2** -->
+<!-- package. This has been subsequently -->
+<!-- adapted to maps thank to **ggmap**, as described below. -->
+
+## **ggmap**
+
+**ggmap**是基于**ggplot2**包的，是对图形语法的一种实操(Wilkinson 2005)。**ggplot2**可以代替R中的基本图形（即到目前为止你用于绘图的函数）。它包含了诸多符合良好可视化实践的默认选项且被清晰明了地写在了文件中：http://docs.ggplot2.org/current/ 。
+
+
+作为对**ggplot2** 的初次尝试我们可以基于`lnd`对象中的属性数据创建一个散点图。
+
+```{r}
+library(ggplot2)
+p <- ggplot(lnd@data, aes(Partic_Per, Pop_2001))
+```
+
+<!-- What you have just done is set up a ggplot object where -->
+<!-- you say where you want the input data to come from. -->
+<!-- `lnd@data` is actually a data frame contained within the -->
+<!-- wider spatial object `lnd` (the `@` enables you to -->
+<!-- access the attribute table of the shapefile). The characters inside the `aes` argument -->
+<!-- refer to the parts of that data frame you wish to use (the variables `Partic_Per` and `Pop_2001`). -->
+<!-- This has to happen within the brackets of `aes()`, which means, -->
+<!-- roughly speaking 'aesthetics that vary'. -->
+
+<!-- If you just type p and hit enter you get the error `No layers in plot`. -->
+<!-- This is because you have not told `ggplot` what you want -->
+<!-- to do with the data. We do this by adding so-called "geoms", -->
+<!-- in this case `geom_point()`. -->
+
+<!-- ```{r fig.cap="A simple graphic produced with **ggplot2**", fig.height=1.7, fig.width=3} -->
+<!-- p + geom_point() -->
+<!-- ``` -->
+
+<!-- Within the brackets you can alter the nature of the points. Try something like `p + geom_point(colour = "red", size=2)` and experiment. -->
+
+<!-- If you want to scale the points by borough population and colour them by sports participation this is also fairly easy by adding another `aes()` argument. -->
+
+<!-- ```{r fig.cap="ggplot with aesthetics", eval=FALSE} -->
+<!-- p + geom_point(aes(colour=Partic_Per, size=Pop_2001)) # not shown -->
+<!-- ``` -->
+
+**ggplot2**的真正强大指出在于为图像增加图层的能力。在本例中可以给图加上文本。
+
+```{r fig.cap="添加文本的ggplot", fig.height=3, fig.width=4}
+p + geom_point(aes(colour = Partic_Per, size = Pop_2001)) +
+  geom_text(size = 2, aes(label = name))
+```
+
+
+图层及几何geoms的思想和R中标准的绘图函数非常不同，但是你会发现每个函数都做了一些很巧妙的事让绘图变得更加简单易行（可到包文件里可以看到完整列表）。
+ 
+
+在接下来的步骤中我们会创建一个地图来展示伦敦每个镇区中定期参加运动人口的百分比。
+
+
+**ggmap** 要求空间数据在使用`tidy()`后被提供为`data.frame`数据框。通用的plot()函数能够直接使用`Spatial*`对象，但**ggplot2**不行。因此我们要将它们提取为一个数据框。`tidy`函数就是为了这个特定的目的被写出来的。要想这个流程行得通，需要先安装**broom**包。
+
+```{r}
+lnd_f <- broom::tidy(lnd)
+```
+
+  		  
+这一步会丢失与lnd对象相关的属性信息。我们可以用来自**dplyr**包的`left_join`函数将它加回去（查看`?left_join`）
+
+```{r, results='hide'}
+head(lnd_f, n = 2) # peak at the fortified data
+lnd$id <- row.names(lnd) # allocate an id variable to the sp data
+head(lnd@data, n = 2) # final check before join (requires shared variable name)
+lnd_f <- left_join(lnd_f, lnd@data) # join the data
+```
+
+新的`lnd_f`对象包含与每个伦敦镇区关联的坐标及相应的属性信息。现在用**ggplot2**创建地图就是非常直接了当的了。`coord_equal()` 和在R中进行常规绘图时的`asp = T`是等价的。
+
+```{r fig.cap="伦敦运动参与地图"}
+map <- ggplot(lnd_f, aes(long, lat, group = group, fill = Partic_Per)) +
+  geom_polygon() + coord_equal() +
+  labs(x = "Easting (m)", y = "Northing (m)",
+    fill = "% Sports\nParticipation") +
+  ggtitle("London Sports Participation")
+```
+
+
+进入`map`应该会看到你绘制的第一张由ggplot绘制的伦敦地图。
+默认颜色设置得很棒，但我们可能更想把地图设成黑白的，然后会产生一个下图中这样地图。尝试用`ggsave()`来修改颜色及保存图形。
+
+```{r fig.cap="灰度图"}
+map + scale_fill_gradient(low = "white", high = "black")
+```
+
+
+## 用**leaflet**创建可交互地图
+
+
+[Leaflet](http://leafletjs.com/)是世界领先的网页绘图系统，每日都支持了世界玩味内数以十万计的绘图。
+在 [github.com/Leaflet/Leaflet](https://github.com/Leaflet/Leaflet)上开发的JavaScript包有一个强大的用户社群。它无疑非常迅速、强大而且容易上手。
+
+
+**leaflet**包用几行代码就创建了可交互的网页地图。该包令人激动的方面在于它与R可交互在线可视化包**shiny**的紧密结合。把它们一起使用，能够让R成为一个完整的地图服务平台，以与GeoServer之流竞争。想要了解更多有关**rstudio/leaflet**的信息，可以查看 [rstudio.github.io/leaflet/](https://rstudio.github.io/leaflet/)和下面的在线教程 [robinlovelace.net/r/2015/02/01/leaflet-r-package.html](http://robinlovelace.net/r/2015/02/01/leaflet-r-package.html)。
+
+```{r, eval=FALSE}
+install.packages("leaflet")
+library(leaflet)
+
+lnd84 <- readRDS('data/lnd84.Rds')
+
+leaflet() %>%
+  addTiles() %>%
+  addPolygons(data = lnd84)
+```
+
+```{r, echo=FALSE, fig.cap="通过leaflet包在rstudio中载入的lnd84对象"}
+grid.raster(readPNG("figure/rstudio-leaflet.png"))
+```
+
+## 高阶任务：对地图进行分面
+
+```{r, echo=FALSE}
+# library(reshape2) # old way of doing
+# If not install it, or skip the next two steps
+```
+
+以下代码展示了如何为该任务读入必要的数据且将数据整洁化（tidy）。数据文件包含伦敦1801到2001年间历史人口值，也同样来自伦敦数据储备中。
+
+
+我们将数据整洁化`tidy`以使其中的列变成行。换句话说，我们将数据由“平整”转化为了“长”的格式，这个格式是**ggplot2**对图形进行分面所要求的：调查人口的日期成为了自成一体的变量，而不是被切开分散至多个列中。
+
+```{r, results='hide'}
+london_data <- read.csv("data/census-historic-population-borough.csv")
+# install.packages("tidyr")
+library(tidyr) # if not install it, or skip the next two steps
+ltidy <- gather(london_data, date, pop, -Area.Code, -Area.Name)
+head(ltidy, 2) # check the output (not shown)
+```
+
+
+在上面的代码中我们在 `london_data`对象中创建了列名'date'（记录的日期，在之前是分散在多个列中的）和'pop'（不同的人口数）。在这个情况下减号(`-`)告诉gather函数不要把`Area.Name` 和`Area.Code`纳入被移除的列中。换句话说，“保持这些列的原样”。数据清理和整洁化是一个重要的议题：想了解更多的信息可以查看Wickham (2014)的讨论或者查看该包的`vignette`，可以由在R中键入`vignette("tidy-data")`来访问。
+
+
+```{r, echo=FALSE, eval=FALSE}
+# lnd_molten <- melt(london_data, id = c("Area.Code", "Area.Name"))
+# lnd_molten <- read.csv("data/london_data_melt.csv")
+# head(lnd_molten)
+# names(lnd_molten)[3] <- "date"
+# Only do this step if reshape and melt failed
+```
+
+
+用来自**dplyr**包的`left_join`函数，合并我们`lnd_f`对象内的伦敦镇区人口数据：
+
+```{r}
+head(lnd_f, 2) # identify shared variables with ltidy 
+ltidy <- rename(ltidy, ons_label = Area.Code) # rename Area.code variable
+lnd_f <- left_join(lnd_f, ltidy)
+```
+
+```{r, echo=FALSE}
+# old way of doing it
+# lnd_f <- merge(lnd_f, ltidy, by.x = "id", by.y = "Area.Code")
+```
+
+对日期变量进行重命名（通过`?gsub`以及搜索'regex'来查看更多信息）。
+
+```{r}
+lnd_f$date <- gsub(pattern = "Pop_", replacement = "", lnd_f$date)
+```
+
+我们现在可以利用分面来产生每年一个地图：
+
+```{r fig.cap="伦敦人口分布随时间变迁分面图", fig.height=6, fig.width=5}
+ggplot(data = lnd_f, # the input data
+  aes(x = long, y = lat, fill = pop/1000, group = group)) + # define variables
+  geom_polygon() + # plot the boroughs
+  geom_path(colour="black", lwd=0.05) + # borough borders
+  coord_equal() + # fixed x and y scales
+  facet_wrap(~ date) + # one plot per time slice
+  scale_fill_gradient2(low = "blue", mid = "grey", high = "red", # colors
+    midpoint = 150, name = "Population\n(thousands)") + # legend options
+  theme(axis.text = element_blank(), # change the theme options
+    axis.title = element_blank(), # remove axis titles
+    axis.ticks = element_blank()) # remove axis ticks
+# ggsave("figure/facet_london.png", width = 9, height = 9) # save figure
+```
+
+这个过程里面是比较复杂的，所以可以翻阅包文件来确保你弄懂了这个操作。
+同时可以尝试不同的颜色值。
+
+尝试用上面的代码块试验一下看看你能做出怎样的效果。
+
+
+> **挑战1:**尝试用这个图来表示人口的百分比，而不是例子中的人口绝对数。
+
+> **挑战2:** 尝试创建伦敦人口随时间变迁的动画来获得奖励分数（提示：ggnaminate.R文件可能会有所帮助）。
+
+```{r, echo=FALSE}
+# **Creating an animation of population change over time**
+
+# library(animation)
+```
+
+
+
+# 第五章: 在R中进一步进行空间数据分析
+
+
+本教程中涉及的技能能够被应用在很广的情境中，无论是否是空间数据。一般来说试验是最有效的学习办法，而不是简单地搜索完成任务的最简单方法（Kabakoff, 2011）。我们推荐你使用数据进行各种尝试。
+
+
+如果你喜欢这个教程，你可能发现章节“用R进行空间数据可视化”（"Spatial Data Visualisation with R"）也非常有趣(Cheshire and Lovelace, 2014)。这个项目的资料库可以在这个GitHub页面上找到： [github.com/geocomPP/sdvwR](https://github.com/geocomPP/sdvwR)。还有很多额外的与本教程关联的“简介短文” （vignettes page），可以在项目资料库的 [vignettes page](https://github.com/Robinlovelace/Creating-maps-in-R/tree/master/vignettes)找到。
+
+
+其他高阶教程包括：
+
+
+- 简单特征（Simple Features）简介
+
+- “solaR：用R分析太阳辐射与光伏系统”（"solaR: Solar Radiation and Photovoltaic Systems with R"），这篇solaR包中的技术学术文献(http://www.jstatsoft.org/v50/i09/paper) 也包含很多空间函数。
+
+
+这样的教程是很值得学习的，因为它们会帮助你了解作为一个自洽整体的R的空间生态，而非简单的独立函数的集合。在R中，整体总是大于部分的简单相加。
+
+
+支持性线上社区是类似R这样大型开源项目中最宝贵的资产之一，所以我们推荐您成为一名积极的" [开源公民](http://blog.cleverelephant.ca/2013/10/being-open-source-citizen.html)"而非一个消极的消费者。
+
+
+能够帮您进一步磨练R技能的优质资源包括：
+
+
+* R的官网主页有丰富的[官方](http://cran.r-project.org/manuals.html) 的 [贡献](http://cran.r-project.org/other-docs.html) 指南。
+http://cran.r-project.org
+
+
+*
+[StackOverflow](http://stackoverflow.com/search?q=[r]) 和 [GIS.StackExchange](http://gis.stackexchange.com/) 小组 (用 "[R]" 作为搜索关键词来限制结果)。如果你的问题还没有被回答，直接问就好了，最好附上一个能够举一反三的例子。
+
+
+* R的[邮件列表](http://www.r-project.org/mail.html)，尤其是 [R-sig-geo](https://stat.ethz.ch/pipermail/r-sig-geo/)。可查看 [r-project.org/mail.html](http://www.r-project.org/mail.html)浏览进一步的信息。
+
+
+* Dorman (2014): R中空间数据的详尽展示，重点在于栅格数据。 书中的一个 [免费样本](https://www.packtpub.com/packtlib/book/Big%20Data%20&%20Business%20Intelligence/9781783984367/4) 可以在线上访问到。
+ 
+
+* Bivand et al. (2013) : “用R进行应用空间数据分析” - 提供了一个关于空间数据分析的详尽概述。
+  
+<!--  \clearpage -->
+
+<!-- # R quick reference -->
+
+<!-- `#`: comments all text until line end -->
+
+<!-- `df <- data.frame(x = 1:9, y = (1:9)^2`: create new object of class `data.frame`, called df, and assign values -->
+
+<!-- `help(plot)`: ask R for basic help on function, the same as `?plot`. Replace `plot` with any function (e.g. `spTransform`). -->
+
+<!-- `library(ggplot2)`: load a package (replace **ggplot2** with your package name) -->
+
+<!-- `install.packages("ggplot2")`: install package --- note quotation marks -->
+
+<!-- `setwd("C:/Users/username/Desktop/")`: set R's *working directory* (set it to your project's folder) -->
+
+<!-- `nrow(df)`: count the number of rows in the object `df` -->
+
+<!-- `summary(df)`: summary statistics of the object `df` -->
+
+<!-- `head(df)`: display first 6 lines of object `df` -->
+
+<!-- `plot(df)`: plot object `df` -->
+
+<!-- `save(df, "C:/Users/username/Desktop/" )`: save df object to specified location -->
+
+<!-- `rm(df)`: remove the `df` object -->
+
+<!-- `proj4string(df)`: query coordinate reference system of `df` object -->
+
+<!-- `spTransform(df, CRS("+init=epsg:4326")`: reproject `df` object to WGS84 -->
+
+
+<!-- # Further information -->
+
+<!-- the input data can be downloaded as a -->
+<!-- [zip file](https://github.com/Robinlovelace/Creating-maps-in-R/archive/master.zip), -->
+<!-- as described below. The entire tutorial was written in -->
+<!-- [RMarkdown](http://rmarkdown.rstudio.com/), which -->
+<!-- allows R code to run as the document compiles, ensuring reproducibility. -->
+
+<!-- Any suggested improvements or new -->
+<!-- [vignettes](https://github.com/Robinlovelace/Creating-maps-in-R/tree/master/vignettes) are welcome, via email -->
+<!-- to Robin or by [forking](https://help.github.com/articles/fork-a-repo) -->
+<!-- the [master version](https://github.com/Robinlovelace/Creating-maps-in-R/blob/master/README.Rmd) of this document. -->
+
+<!-- The colourful syntax highlighting in this document is thanks to -->
+<!-- [RMarkdown](http://rmarkdown.rstudio.com/). -->
+<!-- We try to follow best practice in terms of style, roughly following -->
+<!-- Google's style guide, an in-depth guide written by -->
+<!-- [Johnson (2013)](http://cran.r-project.org/web/packages/rockchalk/vignettes/Rstyle.pdf) -->
+<!-- and a [chapter](http://adv-r.had.co.nz/Style.html) from -->
+<!-- [*Advanced R*](http://adv-r.had.co.nz/) (Wickham, in press). -->
+
+
+# 致谢
+
+该教程是为了一系列由国家调查方法中心资助的短期课程制作的，教程使用了TALISMAN节点（查看 [geotalisman.org](http://www.geotalisman.org/)）。感谢 [ESRC](http://www.esrc.ac.uk/)资助了应用方法研究。非常感谢帮助开发和证明了这些材料的Matt Whittle， Alistair Leak，Hannah Roberts和Phil Jones。Amy O'Neill组织了课程且鼓励了参与者的反馈。最后的致谢是给所有开源软件的用户和开发者，他们让R变成了更强大且不失便利和乐趣的工具。
+
+
+如果你觉得这个教程对你的工作有所助益，请做好 [引用](https://raw.githubusercontent.com/Robinlovelace/Creating-maps-in-R/master/citation.bib):
+
+Lovelace, R., & Cheshire, J. (2014). R空间数据可视化导论. 国家研究方法中心工作论文(Introduction to visualising spatial data in R. National Centre for Research Methods Working Papers)，14(03). 从https://github.com/Robinlovelace/Creating-maps-in-R取得
+
+# 参考文献
+
+Bivand, R. S., Pebesma, E. J., & Rubio, V. G. (2013). 用R进行应用空间数据分析(Applied spatial data analysis with R). Springer. 2nd ed.
+
+Cheshire, J., & Lovelace, R. (2015). 用R进行空间数据可视化(Spatial data visualisation with R). In C. Brunsdon & A. Singleton (Eds.), Geocomputation (pp. 1–14). SAGE Publications.从https://github.com/geocomPP/sdv可获取. 获取完整章节可查看
+https://www.researchgate.net/publication/274697165_Spatial_data_visualisation_with_R
+
+Dorman, M. (2014). 学习R的地理空间分析(Learning R for Geospatial Analysis). Packt Publishing Ltd.
+
+Gillespie, Colin, and Robin Lovelace. 2016. 高效R编程：智能化编程实用指南(Efficient R Programming: A Practical Guide to Smarter Programming). O’Reilly Media. https://csgillespie.github.io/efficientR/.
+
+Kabacoff, R. (2011). R语言实战(R in Action). Manning Publications Co.
+
+Lamigueiro, O. P. (2012). solaR：用R分析太阳辐射与光伏系统 (solaR: Solar Radiation and Photovoltaic Systems with R). Journal of Statistical Software, 50(9), 1–32. 从http://www.jstatsoft.org/v50/i09获取
+
+Wickham, H. (2014). 整洁数据(Tidy data). The Journal of Statistical Software, 14(5), 从http://www.jstatsoft.org/v59/i10获取
+
+Wilkinson, L. (2005). 图形语法(The grammar of graphics). Springer.
